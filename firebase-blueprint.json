@@ -1,0 +1,370 @@
+{
+  "entities": {
+    "Study": {
+      "title": "Study",
+      "description": "Survey configuration and metadata owned by an authenticated researcher.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the researcher who owns this study."
+        },
+        "estudio_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "titulo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "universo_N": {
+          "type": "number"
+        },
+        "nivel_confianza_pct": {
+          "type": "number",
+          "enum": [90, 95, 99]
+        },
+        "margen_error_pct": {
+          "type": "number"
+        },
+        "tamano_muestra_n": {
+          "type": "number"
+        },
+        "politica_cuota_estricta": {
+          "type": "boolean"
+        },
+        "version_instrumento": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "estudio_id",
+        "titulo",
+        "universo_N",
+        "nivel_confianza_pct",
+        "margen_error_pct",
+        "tamano_muestra_n",
+        "politica_cuota_estricta",
+        "version_instrumento",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "Survey instrument question belonging to a study.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "studyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "orden": {
+          "type": "number"
+        },
+        "texto": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "tipo": {
+          "type": "string",
+          "enum": ["unica", "multiple", "escala_likert", "likert_7", "estrellas", "slider", "nps", "texto"]
+        },
+        "alternativas": {
+          "type": "array"
+        },
+        "obligatoria": {
+          "type": "boolean"
+        },
+        "salto_logico": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "studyId",
+        "ownerId",
+        "orden",
+        "texto",
+        "tipo",
+        "alternativas",
+        "obligatoria",
+        "salto_logico",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Quota": {
+      "title": "Quota",
+      "description": "Demographic sample quota segment belonging to a study.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "studyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "macro_zona": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "rango_etario": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "genero": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "meta": {
+          "type": "number"
+        },
+        "actual": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "studyId",
+        "ownerId",
+        "macro_zona",
+        "rango_etario",
+        "genero",
+        "meta",
+        "actual",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Response": {
+      "title": "Response",
+      "description": "Strictly anonymous substantive survey response with no PII.",
+      "type": "object",
+      "properties": {
+        "uuid_respuesta": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "studyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "timestamp_captura": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "timestamp_sync": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "macro_zona": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "rango_etario": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "genero": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "estado_cuota": {
+          "type": "string",
+          "enum": ["ACEPTADA", "SOBRECUPO_ALERTA"]
+        },
+        "respuestas": {
+          "type": "object"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uuid_respuesta",
+        "studyId",
+        "ownerId",
+        "timestamp_captura",
+        "timestamp_sync",
+        "macro_zona",
+        "rango_etario",
+        "genero",
+        "estado_cuota",
+        "respuestas",
+        "createdAt"
+      ]
+    },
+    "Audit": {
+      "title": "Audit",
+      "description": "Detached field audit event strictly isolated from anonymous response UUIDs.",
+      "type": "object",
+      "properties": {
+        "id_evento_auditoria": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "studyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fecha_registro": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "operador_codigo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "macro_zona_aprox": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "consentimiento_opt_in": {
+          "type": "boolean"
+        },
+        "nota_contacto_opcional": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id_evento_auditoria",
+        "studyId",
+        "ownerId",
+        "fecha_registro",
+        "operador_codigo",
+        "macro_zona_aprox",
+        "consentimiento_opt_in",
+        "nota_contacto_opcional",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/studies/{studyId}": {
+      "schema": {
+        "$ref": "#/entities/Study"
+      },
+      "description": "Active survey study configuration owned by the authenticated user."
+    },
+    "/studies/{studyId}/questions/{questionId}": {
+      "schema": {
+        "$ref": "#/entities/Question"
+      },
+      "description": "Questions configured for a specific survey study."
+    },
+    "/studies/{studyId}/quotas/{quotaId}": {
+      "schema": {
+        "$ref": "#/entities/Quota"
+      },
+      "description": "Demographic quotas tracking targets and actual counts for a study."
+    },
+    "/studies/{studyId}/responses/{responseId}": {
+      "schema": {
+        "$ref": "#/entities/Response"
+      },
+      "description": "Anonymous survey responses without any PII."
+    },
+    "/studies/{studyId}/audits/{auditId}": {
+      "schema": {
+        "$ref": "#/entities/Audit"
+      },
+      "description": "Detached field operator audit logs and optional contact notes restricted strictly to the study owner."
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Cleasy Survey",
+  "description": "Plataforma y consola técnica para software de encuestas estadísticas offline-first de costo cero en Google Apps Script y Google Sheets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

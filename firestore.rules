@@ -1,0 +1,257 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable Hardened Primitives
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidShortId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 64 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isStudyOwner(studyId) {
+      return exists(/databases/$(database)/documents/studies/$(studyId)) &&
+        get(/databases/$(database)/documents/studies/$(studyId)).data.ownerId == request.auth.uid;
+    }
+
+    // Validation Blueprints
+    function isValidStudy(data) {
+      return data.keys().hasAll([
+          'ownerId', 'estudio_id', 'titulo', 'universo_N', 'nivel_confianza_pct',
+          'margen_error_pct', 'tamano_muestra_n', 'politica_cuota_estricta',
+          'version_instrumento', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerId', 'estudio_id', 'titulo', 'universo_N', 'nivel_confianza_pct',
+          'margen_error_pct', 'tamano_muestra_n', 'politica_cuota_estricta',
+          'version_instrumento', 'createdAt', 'updatedAt'
+        ]) &&
+        data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid &&
+        data.estudio_id is string && isValidId(data.estudio_id) &&
+        data.titulo is string && data.titulo.size() >= 1 && data.titulo.size() <= 200 &&
+        (data.universo_N is int || data.universo_N is float) && data.universo_N >= 1 && data.universo_N <= 1000000000 &&
+        (data.nivel_confianza_pct is int || data.nivel_confianza_pct is float) && data.nivel_confianza_pct in [90, 95, 99] &&
+        (data.margen_error_pct is int || data.margen_error_pct is float) && data.margen_error_pct >= 0.5 && data.margen_error_pct <= 20 &&
+        (data.tamano_muestra_n is int || data.tamano_muestra_n is float) && data.tamano_muestra_n >= 1 && data.tamano_muestra_n <= 100000000 &&
+        data.politica_cuota_estricta is bool &&
+        data.version_instrumento is string && data.version_instrumento.size() >= 1 && data.version_instrumento.size() <= 40 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidQuestion(data, studyId) {
+      return data.keys().hasAll([
+          'id', 'studyId', 'ownerId', 'orden', 'texto', 'tipo',
+          'alternativas', 'obligatoria', 'salto_logico', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'studyId', 'ownerId', 'orden', 'texto', 'tipo',
+          'alternativas', 'obligatoria', 'salto_logico', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id is string && isValidShortId(data.id) &&
+        data.studyId is string && isValidId(data.studyId) && data.studyId == studyId &&
+        data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid &&
+        (data.orden is int || data.orden is float) && data.orden >= 1 && data.orden <= 1000 &&
+        data.texto is string && data.texto.size() >= 1 && data.texto.size() <= 500 &&
+        data.tipo is string && data.tipo in ['unica', 'multiple', 'escala_likert', 'likert_7', 'estrellas', 'slider', 'nps', 'texto'] &&
+        data.alternativas is list && data.alternativas.size() <= 30 &&
+        (data.alternativas.size() == 0 || data.alternativas[0] is string) &&
+        data.obligatoria is bool &&
+        data.salto_logico is string && data.salto_logico.size() <= 200 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidQuota(data, studyId) {
+      return data.keys().hasAll([
+          'id', 'studyId', 'ownerId', 'macro_zona', 'rango_etario',
+          'genero', 'meta', 'actual', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'studyId', 'ownerId', 'macro_zona', 'rango_etario',
+          'genero', 'meta', 'actual', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id is string && isValidShortId(data.id) &&
+        data.studyId is string && isValidId(data.studyId) && data.studyId == studyId &&
+        data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid &&
+        data.macro_zona is string && data.macro_zona.size() >= 1 && data.macro_zona.size() <= 120 &&
+        data.rango_etario is string && data.rango_etario.size() >= 1 && data.rango_etario.size() <= 60 &&
+        data.genero is string && data.genero.size() >= 1 && data.genero.size() <= 60 &&
+        (data.meta is int || data.meta is float) && data.meta >= 1 && data.meta <= 1000000 &&
+        (data.actual is int || data.actual is float) && data.actual >= 0 && data.actual <= 1000000 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidResponse(data, studyId) {
+      return data.keys().hasAll([
+          'uuid_respuesta', 'studyId', 'ownerId', 'timestamp_captura', 'timestamp_sync',
+          'macro_zona', 'rango_etario', 'genero', 'estado_cuota', 'respuestas', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uuid_respuesta', 'studyId', 'ownerId', 'timestamp_captura', 'timestamp_sync',
+          'macro_zona', 'rango_etario', 'genero', 'estado_cuota', 'respuestas', 'createdAt'
+        ]) &&
+        data.uuid_respuesta is string && isValidId(data.uuid_respuesta) &&
+        data.studyId is string && isValidId(data.studyId) && data.studyId == studyId &&
+        data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid &&
+        data.timestamp_captura is string && data.timestamp_captura.size() >= 1 && data.timestamp_captura.size() <= 64 &&
+        data.timestamp_sync is string && data.timestamp_sync.size() >= 1 && data.timestamp_sync.size() <= 64 &&
+        data.macro_zona is string && data.macro_zona.size() >= 1 && data.macro_zona.size() <= 120 &&
+        data.rango_etario is string && data.rango_etario.size() <= 60 &&
+        data.genero is string && data.genero.size() <= 60 &&
+        data.estado_cuota is string && data.estado_cuota in ['ACEPTADA', 'SOBRECUPO_ALERTA'] &&
+        data.respuestas is map && data.respuestas.size() <= 100 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidAudit(data, studyId) {
+      return data.keys().hasAll([
+          'id_evento_auditoria', 'studyId', 'ownerId', 'fecha_registro',
+          'operador_codigo', 'macro_zona_aprox', 'consentimiento_opt_in',
+          'nota_contacto_opcional', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id_evento_auditoria', 'studyId', 'ownerId', 'fecha_registro',
+          'operador_codigo', 'macro_zona_aprox', 'consentimiento_opt_in',
+          'nota_contacto_opcional', 'createdAt'
+        ]) &&
+        data.id_evento_auditoria is string && isValidId(data.id_evento_auditoria) &&
+        data.studyId is string && isValidId(data.studyId) && data.studyId == studyId &&
+        data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid &&
+        data.fecha_registro is string && data.fecha_registro.size() >= 1 && data.fecha_registro.size() <= 64 &&
+        data.operador_codigo is string && data.operador_codigo.size() >= 1 && data.operador_codigo.size() <= 120 &&
+        data.macro_zona_aprox is string && data.macro_zona_aprox.size() >= 1 && data.macro_zona_aprox.size() <= 120 &&
+        data.consentimiento_opt_in is bool &&
+        data.nota_contacto_opcional is string && data.nota_contacto_opcional.size() <= 300 &&
+        data.createdAt is timestamp;
+    }
+
+    match /studies/{studyId} {
+      allow get: if isVerifiedUser() && isValidId(studyId) && existing().ownerId == request.auth.uid;
+      allow list: if isVerifiedUser() && existing().ownerId == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(studyId) &&
+        isValidStudy(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(studyId) &&
+        isValidStudy(incoming()) &&
+        existing().ownerId == request.auth.uid &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().estudio_id == existing().estudio_id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'titulo', 'universo_N', 'nivel_confianza_pct',
+          'margen_error_pct', 'tamano_muestra_n', 'politica_cuota_estricta',
+          'version_instrumento', 'updatedAt'
+        ]);
+      allow delete: if isVerifiedUser() && isValidId(studyId) && existing().ownerId == request.auth.uid;
+
+      match /questions/{questionId} {
+        allow get: if isVerifiedUser() && isValidId(studyId) && isValidShortId(questionId) &&
+          existing().ownerId == request.auth.uid && isStudyOwner(studyId);
+        allow list: if isVerifiedUser() && isValidId(studyId) &&
+          existing().ownerId == request.auth.uid && existing().studyId == studyId;
+        allow create: if isVerifiedUser() && isValidId(studyId) && isValidShortId(questionId) &&
+          isValidQuestion(incoming(), studyId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isStudyOwner(studyId);
+        allow update: if isVerifiedUser() && isValidId(studyId) && isValidShortId(questionId) &&
+          isValidQuestion(incoming(), studyId) &&
+          existing().ownerId == request.auth.uid &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().studyId == existing().studyId &&
+          incoming().id == existing().id &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          isStudyOwner(studyId) &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'orden', 'texto', 'tipo', 'alternativas', 'obligatoria', 'salto_logico', 'updatedAt'
+          ]);
+        allow delete: if isVerifiedUser() && isValidId(studyId) && isValidShortId(questionId) &&
+          existing().ownerId == request.auth.uid && isStudyOwner(studyId);
+      }
+
+      match /quotas/{quotaId} {
+        allow get: if isVerifiedUser() && isValidId(studyId) && isValidShortId(quotaId) &&
+          existing().ownerId == request.auth.uid && isStudyOwner(studyId);
+        allow list: if isVerifiedUser() && isValidId(studyId) &&
+          existing().ownerId == request.auth.uid && existing().studyId == studyId;
+        allow create: if isVerifiedUser() && isValidId(studyId) && isValidShortId(quotaId) &&
+          isValidQuota(incoming(), studyId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isStudyOwner(studyId);
+        allow update: if isVerifiedUser() && isValidId(studyId) && isValidShortId(quotaId) &&
+          isValidQuota(incoming(), studyId) &&
+          existing().ownerId == request.auth.uid &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().studyId == existing().studyId &&
+          incoming().id == existing().id &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          isStudyOwner(studyId) &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'macro_zona', 'rango_etario', 'genero', 'meta', 'actual', 'updatedAt'
+          ]);
+        allow delete: if isVerifiedUser() && isValidId(studyId) && isValidShortId(quotaId) &&
+          existing().ownerId == request.auth.uid && isStudyOwner(studyId);
+      }
+
+      match /responses/{responseId} {
+        allow get: if isVerifiedUser() && isValidId(studyId) && isValidId(responseId) &&
+          existing().ownerId == request.auth.uid && isStudyOwner(studyId);
+        allow list: if isVerifiedUser() && isValidId(studyId) &&
+          existing().ownerId == request.auth.uid && existing().studyId == studyId;
+        allow create: if isVerifiedUser() && isValidId(studyId) && isValidId(responseId) &&
+          isValidResponse(incoming(), studyId) &&
+          incoming().uuid_respuesta == responseId &&
+          incoming().createdAt == request.time &&
+          isStudyOwner(studyId);
+        allow update: if false;
+        allow delete: if isVerifiedUser() && isValidId(studyId) && isValidId(responseId) &&
+          existing().ownerId == request.auth.uid && isStudyOwner(studyId);
+      }
+
+      match /audits/{auditId} {
+        allow get: if isVerifiedUser() && isValidId(studyId) && isValidId(auditId) &&
+          existing().ownerId == request.auth.uid && isStudyOwner(studyId);
+        allow list: if isVerifiedUser() && isValidId(studyId) &&
+          existing().ownerId == request.auth.uid && existing().studyId == studyId;
+        allow create: if isVerifiedUser() && isValidId(studyId) && isValidId(auditId) &&
+          isValidAudit(incoming(), studyId) &&
+          incoming().id_evento_auditoria == auditId &&
+          incoming().createdAt == request.time &&
+          isStudyOwner(studyId);
+        allow update: if false;
+        allow delete: if isVerifiedUser() && isValidId(studyId) && isValidId(auditId) &&
+          existing().ownerId == request.auth.uid && isStudyOwner(studyId);
+      }
+    }
+  }
+}
