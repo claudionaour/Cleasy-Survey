@@ -7,8 +7,10 @@ import {
 import {
   ConfiguracionEncuesta,
   CuotaDemografica,
+  ModalidadRecoleccion,
   PreguntaInstrumento
 } from '../types/survey';
+import { CawiShareCard } from './CawiShareCard';
 
 interface BuilderAndQuotasPanelProps {
   config: ConfiguracionEncuesta;
@@ -19,6 +21,9 @@ interface BuilderAndQuotasPanelProps {
   cuotas: CuotaDemografica[];
   onAddCuota: (cuota: CuotaDemografica) => void;
   onRemoveCuota: (id: string) => void;
+  activeStudyId?: string | null;
+  onConectarFirebase?: () => void;
+  onPreviewCawi?: () => void;
 }
 
 interface GuardrailAlerta {
@@ -76,7 +81,10 @@ export function BuilderAndQuotasPanel({
   onRemovePregunta,
   cuotas,
   onAddCuota,
-  onRemoveCuota
+  onRemoveCuota,
+  activeStudyId = null,
+  onConectarFirebase,
+  onPreviewCawi
 }: BuilderAndQuotasPanelProps) {
   const [texto, setTexto] = useState('');
   const [tipo, setTipo] = useState<PreguntaInstrumento['tipo']>('unica');
@@ -263,6 +271,61 @@ export function BuilderAndQuotasPanel({
               />
             </div>
 
+            <div className="sm:col-span-3 space-y-2 pt-1">
+              <label className="block text-xs font-medium text-slate-200">
+                Modalidad de Recolección (Encuestador vs. CAWI Autoadministrada)
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {(
+                  [
+                    {
+                      id: 'solo_encuestador',
+                      titulo: 'Solo Encuestador',
+                      desc: 'Aplicación asistida en terreno o presencial'
+                    },
+                    {
+                      id: 'mixta',
+                      titulo: 'Mixta (Encuestador + CAWI)',
+                      desc: 'Encuestador en terreno y enlace web autónomo'
+                    },
+                    {
+                      id: 'cawi_exclusiva',
+                      titulo: 'CAWI Exclusiva',
+                      desc: 'Solo enlace o correo, sin encuestador'
+                    }
+                  ] as { id: ModalidadRecoleccion; titulo: string; desc: string }[]
+                ).map((op) => {
+                  const activo = (config.modalidad_recoleccion || 'mixta') === op.id;
+                  return (
+                    <button
+                      key={op.id}
+                      type="button"
+                      onClick={() =>
+                        onUpdateConfig({
+                          ...config,
+                          modalidad_recoleccion: op.id
+                        })
+                      }
+                      className={`text-left px-3.5 py-2.5 rounded-lg border transition-colors cursor-pointer ${
+                        activo
+                          ? 'bg-orange-500 text-[#081529] border-orange-500'
+                          : 'bg-[#081529] text-white border-[#1E3A5F] hover:border-orange-500/60'
+                      }`}
+                    >
+                      <div className="text-xs font-semibold">{op.titulo}</div>
+                      <div
+                        className={`text-[11px] mt-0.5 ${
+                          activo ? 'text-[#081529]/80' : 'text-slate-400'
+                        }`}
+                      >
+                        {op.desc}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="sm:col-span-3 pt-1">
               <label className="inline-flex items-center gap-2.5 text-xs text-slate-200 cursor-pointer select-none">
                 <input
@@ -312,6 +375,16 @@ export function BuilderAndQuotasPanel({
           </div>
         </div>
       </div>
+
+      {/* Distribución CAWI cuando el estudio permite enlace web autoadministrado */}
+      <CawiShareCard
+        titulo={config.titulo}
+        modalidad={config.modalidad_recoleccion || 'mixta'}
+        activeStudyId={activeStudyId}
+        preguntasCount={preguntas.length}
+        onConectarFirebase={onConectarFirebase}
+        onPreviewCawi={onPreviewCawi}
+      />
 
       {/* Constructor de preguntas + Lista de preguntas y cuotas */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

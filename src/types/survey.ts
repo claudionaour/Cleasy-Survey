@@ -1,5 +1,7 @@
 export type RolUsuario = 'admin' | 'encuestador' | 'cliente';
 
+export type ModalidadRecoleccion = 'solo_encuestador' | 'mixta' | 'cawi_exclusiva';
+
 export interface ConfiguracionEncuesta {
   estudio_id: string;
   titulo: string;
@@ -9,6 +11,7 @@ export interface ConfiguracionEncuesta {
   tamano_muestra_n: number;
   politica_cuota_estricta: boolean;
   version_instrumento: string;
+  modalidad_recoleccion: ModalidadRecoleccion;
 }
 
 export interface PreguntaInstrumento {

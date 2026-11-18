@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -17,6 +18,8 @@ import {
   AuditoriaDesvinculadaRow,
   ConfiguracionEncuesta,
   CuotaDemografica,
+  EncuestaPendienteOffline,
+  ModalidadRecoleccion,
   PreguntaInstrumento,
   RespuestaAnonimaRow
 } from '../types/survey';
@@ -26,6 +29,13 @@ export function buildStudyDocId(uid: string, estudioId: string): string {
   const prefix = sanitizeValidId(uid.slice(0, 14), 16);
   const cleanEst = sanitizeValidId(estudioId || 'EST-2026', 80);
   return sanitizeValidId(`${prefix}_${cleanEst}`, VALIDATION_LIMITS.ID_MAX);
+}
+
+function normalizeModalidad(val: unknown): ModalidadRecoleccion {
+  if (val === 'solo_encuestador' || val === 'cawi_exclusiva' || val === 'mixta') {
+    return val;
+  }
+  return 'mixta';
 }
 
 function sanitizeStudyPayload(
@@ -62,6 +72,7 @@ function sanitizeStudyPayload(
       VALIDATION_LIMITS.VERSION_MAX,
       'v1.0'
     ),
+    modalidad_recoleccion: normalizeModalidad(config.modalidad_recoleccion),
     updatedAt: serverTimestamp()
   };
 
@@ -80,7 +91,8 @@ function sanitizeStudyPayload(
 function sanitizeQuestionPayload(
   uid: string,
   studyId: string,
-  p: PreguntaInstrumento
+  p: PreguntaInstrumento,
+  cawiEnabled: boolean
 ) {
   const cleanId = sanitizeValidId(p.id, VALIDATION_LIMITS.SHORT_ID_MAX);
   const cleanAlts = (Array.isArray(p.alternativas) ? p.alternativas : [])
@@ -98,12 +110,18 @@ function sanitizeQuestionPayload(
     alternativas: cleanAlts,
     obligatoria: Boolean(p.obligatoria),
     salto_logico: clampText(p.salto_logico, VALIDATION_LIMITS.SALTO_LOGICO_MAX),
+    cawiEnabled,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
 }
 
-function sanitizeQuotaPayload(uid: string, studyId: string, c: CuotaDemografica) {
+function sanitizeQuotaPayload(
+  uid: string,
+  studyId: string,
+  c: CuotaDemografica,
+  cawiEnabled: boolean
+) {
   const cleanId = sanitizeValidId(c.id, VALIDATION_LIMITS.SHORT_ID_MAX);
   return {
     id: cleanId,
@@ -114,6 +132,7 @@ function sanitizeQuotaPayload(uid: string, studyId: string, c: CuotaDemografica)
     genero: clampText(c.genero, VALIDATION_LIMITS.GENERO_MAX, 'Femenino'),
     meta: Math.min(VALIDATION_LIMITS.QUOTA_META_MAX, Math.max(1, Math.round(c.meta || 1))),
     actual: Math.min(VALIDATION_LIMITS.QUOTA_META_MAX, Math.max(0, Math.round(c.actual || 0))),
+    cawiEnabled,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
@@ -221,9 +240,9 @@ export async function ensureUserStudy(
 
     const studyId = buildStudyDocId(uid, localState.config.estudio_id);
     const studyRef = doc(db, studiesPath, studyId);
+    const cawiEnabled = normalizeModalidad(localState.config.modalidad_recoleccion) !== 'solo_encuestador';
     await setDoc(studyRef, sanitizeStudyPayload(uid, localState.config, true));
 
-    // Migrar datos locales existentes (si los hay) al estudio inicial en la nube
     const hasLocalItems =
       localState.preguntas.length > 0 ||
       localState.cuotas.length > 0 ||
@@ -233,11 +252,11 @@ export async function ensureUserStudy(
     if (hasLocalItems) {
       const batch = writeBatch(db);
       localState.preguntas.forEach((p) => {
-        const cleanP = sanitizeQuestionPayload(uid, studyId, p);
+        const cleanP = sanitizeQuestionPayload(uid, studyId, p, cawiEnabled);
         batch.set(doc(db, studiesPath, studyId, 'questions', cleanP.id), cleanP);
       });
       localState.cuotas.forEach((c) => {
-        const cleanC = sanitizeQuotaPayload(uid, studyId, c);
+        const cleanC = sanitizeQuotaPayload(uid, studyId, c, cawiEnabled);
         batch.set(doc(db, studiesPath, studyId, 'quotas', cleanC.id), cleanC);
       });
       localState.respuestas.forEach((r) => {
@@ -292,7 +311,8 @@ export function subscribeStudyRealtime(
         margen_error_pct: Number(d.margen_error_pct || 5),
         tamano_muestra_n: Number(d.tamano_muestra_n || 278),
         politica_cuota_estricta: Boolean(d.politica_cuota_estricta),
-        version_instrumento: String(d.version_instrumento || 'v1.0')
+        version_instrumento: String(d.version_instrumento || 'v1.0'),
+        modalidad_recoleccion: normalizeModalidad(d.modalidad_recoleccion)
       });
     },
     (error) => {
@@ -435,11 +455,31 @@ export function subscribeStudyRealtime(
 export async function updateStudyConfigInFirestore(
   uid: string,
   studyId: string,
-  config: ConfiguracionEncuesta
+  config: ConfiguracionEncuesta,
+  syncCawiFlagOnSubcollections = false
 ) {
   const path = `studies/${studyId}`;
   try {
     await updateDoc(doc(db, 'studies', studyId), sanitizeStudyPayload(uid, config, false));
+
+    if (syncCawiFlagOnSubcollections) {
+      const cawiEnabled =
+        normalizeModalidad(config.modalidad_recoleccion) !== 'solo_encuestador';
+      const batch = writeBatch(db);
+      const qSnap = await getDocs(
+        query(collection(db, 'studies', studyId, 'questions'), where('ownerId', '==', uid))
+      );
+      qSnap.docs.forEach((d) => {
+        batch.update(d.ref, { cawiEnabled, updatedAt: serverTimestamp() });
+      });
+      const cSnap = await getDocs(
+        query(collection(db, 'studies', studyId, 'quotas'), where('ownerId', '==', uid))
+      );
+      cSnap.docs.forEach((d) => {
+        batch.update(d.ref, { cawiEnabled, updatedAt: serverTimestamp() });
+      });
+      await batch.commit();
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
@@ -448,9 +488,11 @@ export async function updateStudyConfigInFirestore(
 export async function addQuestionInFirestore(
   uid: string,
   studyId: string,
-  pregunta: PreguntaInstrumento
+  pregunta: PreguntaInstrumento,
+  modalidad: ModalidadRecoleccion
 ) {
-  const cleanP = sanitizeQuestionPayload(uid, studyId, pregunta);
+  const cawiEnabled = normalizeModalidad(modalidad) !== 'solo_encuestador';
+  const cleanP = sanitizeQuestionPayload(uid, studyId, pregunta, cawiEnabled);
   const path = `studies/${studyId}/questions/${cleanP.id}`;
   try {
     await setDoc(doc(db, 'studies', studyId, 'questions', cleanP.id), cleanP);
@@ -472,9 +514,11 @@ export async function deleteQuestionInFirestore(studyId: string, questionId: str
 export async function addQuotaInFirestore(
   uid: string,
   studyId: string,
-  cuota: CuotaDemografica
+  cuota: CuotaDemografica,
+  modalidad: ModalidadRecoleccion
 ) {
-  const cleanC = sanitizeQuotaPayload(uid, studyId, cuota);
+  const cawiEnabled = normalizeModalidad(modalidad) !== 'solo_encuestador';
+  const cleanC = sanitizeQuotaPayload(uid, studyId, cuota, cawiEnabled);
   const path = `studies/${studyId}/quotas/${cleanC.id}`;
   try {
     await setDoc(doc(db, 'studies', studyId, 'quotas', cleanC.id), cleanC);
@@ -551,6 +595,172 @@ export async function resetStudyDataInFirestore(
         query(collection(db, 'studies', studyId, colName), where('ownerId', '==', uid))
       );
       snap.docs.forEach((d) => batch.delete(d.ref));
+    }
+
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export interface PublicCawiStudyBundle {
+  studyId: string;
+  ownerId: string;
+  config: ConfiguracionEncuesta;
+  preguntas: PreguntaInstrumento[];
+  cuotas: CuotaDemografica[];
+}
+
+export async function loadPublicCawiStudy(
+  rawStudyId: string
+): Promise<PublicCawiStudyBundle | null> {
+  const studyId = sanitizeValidId(rawStudyId, VALIDATION_LIMITS.ID_MAX);
+  const studyPath = `studies/${studyId}`;
+  try {
+    const studySnap = await getDoc(doc(db, 'studies', studyId));
+    if (!studySnap.exists()) {
+      return null;
+    }
+
+    const d = studySnap.data();
+    const modalidad = normalizeModalidad(d.modalidad_recoleccion);
+    const config: ConfiguracionEncuesta = {
+      estudio_id: String(d.estudio_id || 'EST-2026'),
+      titulo: String(d.titulo || 'Encuesta'),
+      universo_N: Number(d.universo_N || 1000),
+      nivel_confianza_pct:
+        d.nivel_confianza_pct === 90 || d.nivel_confianza_pct === 99
+          ? d.nivel_confianza_pct
+          : 95,
+      margen_error_pct: Number(d.margen_error_pct || 5),
+      tamano_muestra_n: Number(d.tamano_muestra_n || 278),
+      politica_cuota_estricta: Boolean(d.politica_cuota_estricta),
+      version_instrumento: String(d.version_instrumento || 'v1.0'),
+      modalidad_recoleccion: modalidad
+    };
+
+    if (modalidad === 'solo_encuestador') {
+      return {
+        studyId,
+        ownerId: String(d.ownerId || ''),
+        config,
+        preguntas: [],
+        cuotas: []
+      };
+    }
+
+    const qSnap = await getDocs(
+      query(
+        collection(db, 'studies', studyId, 'questions'),
+        where('cawiEnabled', '==', true)
+      )
+    );
+    const preguntas: PreguntaInstrumento[] = qSnap.docs
+      .map((docSnap) => {
+        const qd = docSnap.data();
+        return {
+          id: String(qd.id || docSnap.id),
+          orden: Number(qd.orden || 1),
+          texto: String(qd.texto || ''),
+          tipo: qd.tipo as PreguntaInstrumento['tipo'],
+          alternativas: Array.isArray(qd.alternativas)
+            ? qd.alternativas.map((x) => String(x))
+            : [],
+          obligatoria: Boolean(qd.obligatoria),
+          salto_logico: String(qd.salto_logico || '')
+        };
+      })
+      .sort((a, b) => a.orden - b.orden);
+
+    const cSnap = await getDocs(
+      query(
+        collection(db, 'studies', studyId, 'quotas'),
+        where('cawiEnabled', '==', true)
+      )
+    );
+    const cuotas: CuotaDemografica[] = cSnap.docs.map((docSnap) => {
+      const cd = docSnap.data();
+      return {
+        id: String(cd.id || docSnap.id),
+        macro_zona: String(cd.macro_zona || ''),
+        rango_etario: String(cd.rango_etario || ''),
+        genero: String(cd.genero || ''),
+        meta: Number(cd.meta || 0),
+        actual: Number(cd.actual || 0)
+      };
+    });
+
+    return {
+      studyId,
+      ownerId: String(d.ownerId || ''),
+      config,
+      preguntas,
+      cuotas
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, studyPath);
+  }
+}
+
+export async function submitPublicCawiResponse(
+  studyId: string,
+  ownerId: string,
+  item: EncuestaPendienteOffline,
+  matchingQuota: CuotaDemografica | null,
+  politicaCuotaEstricta: boolean
+): Promise<void> {
+  const cleanStudyId = sanitizeValidId(studyId, VALIDATION_LIMITS.ID_MAX);
+  const path = `studies/${cleanStudyId}/responses`;
+
+  let estadoCuota: 'ACEPTADA' | 'SOBRECUPO_ALERTA' = 'ACEPTADA';
+  if (matchingQuota && matchingQuota.actual >= matchingQuota.meta) {
+    if (politicaCuotaEstricta) {
+      throw new Error('El cupo para tu segmento demográfico ya se encuentra completo.');
+    }
+    estadoCuota = 'SOBRECUPO_ALERTA';
+  }
+
+  const ahoraIso = new Date().toISOString();
+  const cleanUuid = sanitizeValidId(item.uuid, VALIDATION_LIMITS.ID_MAX);
+  const auditId = sanitizeValidId(
+    'AUD-' + Math.random().toString(16).slice(2, 10) + Date.now().toString(36),
+    VALIDATION_LIMITS.ID_MAX
+  );
+
+  const responseDoc = sanitizeResponsePayload(ownerId, cleanStudyId, {
+    uuid_respuesta: cleanUuid,
+    timestamp_captura: item.timestamp_captura,
+    timestamp_sync: ahoraIso,
+    macro_zona: item.macro_zona,
+    rango_etario: item.rango_etario,
+    genero: item.genero,
+    estado_cuota: estadoCuota,
+    respuestas_json: JSON.stringify(item.respuestas)
+  });
+
+  const auditDoc = sanitizeAuditPayload(ownerId, cleanStudyId, {
+    id_evento_auditoria: auditId,
+    fecha_registro: ahoraIso,
+    operador_codigo: 'CAWI-Autoadministrado',
+    macro_zona_aprox: item.macro_zona,
+    consentimiento_opt_in: item.consentimiento_opt_in,
+    nota_contacto_opcional: item.contacto_opcional
+  });
+
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'studies', cleanStudyId, 'responses', cleanUuid), responseDoc);
+    batch.set(doc(db, 'studies', cleanStudyId, 'audits', auditId), auditDoc);
+
+    if (matchingQuota) {
+      const cleanQuotaId = sanitizeValidId(matchingQuota.id, VALIDATION_LIMITS.SHORT_ID_MAX);
+      batch.update(doc(db, 'studies', cleanStudyId, 'quotas', cleanQuotaId), {
+        actual: Math.min(
+          VALIDATION_LIMITS.QUOTA_META_MAX,
+          Math.max(0, Math.round(matchingQuota.actual) + 1)
+        ),
+        updatedAt: serverTimestamp()
+      });
     }
 
     await batch.commit();

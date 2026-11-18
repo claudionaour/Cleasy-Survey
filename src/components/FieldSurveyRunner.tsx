@@ -17,6 +17,7 @@ import {
   EventoLockLog,
   PreguntaInstrumento
 } from '../types/survey';
+import { CawiShareCard } from './CawiShareCard';
 
 interface FieldSurveyRunnerProps {
   config: ConfiguracionEncuesta;
@@ -32,6 +33,9 @@ interface FieldSurveyRunnerProps {
   onGuardarRespuesta: (item: EncuestaPendienteOffline) => void;
   onEjecutarGuardarLote: () => void;
   onReiniciarDatos: () => void;
+  activeStudyId?: string | null;
+  onConectarFirebase?: () => void;
+  onPreviewCawi?: () => void;
 }
 
 export function FieldSurveyRunner({
@@ -47,7 +51,10 @@ export function FieldSurveyRunner({
   onToggleEnLinea,
   onGuardarRespuesta,
   onEjecutarGuardarLote,
-  onReiniciarDatos
+  onReiniciarDatos,
+  activeStudyId = null,
+  onConectarFirebase,
+  onPreviewCawi
 }: FieldSurveyRunnerProps) {
   const [operador, setOperador] = useState('');
   const [macroZona, setMacroZona] = useState('');
@@ -188,6 +195,15 @@ export function FieldSurveyRunner({
         </div>
       </div>
 
+      <CawiShareCard
+        titulo={config.titulo}
+        modalidad={config.modalidad_recoleccion || 'mixta'}
+        activeStudyId={activeStudyId}
+        preguntasCount={preguntas.length}
+        onConectarFirebase={onConectarFirebase}
+        onPreviewCawi={onPreviewCawi}
+      />
+
       {preguntas.length === 0 ? (
         <div className="bg-[#0F2342] border border-[#1E3A5F] rounded-lg p-10 text-center space-y-4">
           <h2 className="text-lg font-semibold text-white">
@@ -205,6 +221,35 @@ export function FieldSurveyRunner({
             <Plus className="w-4 h-4" />
             Ir al Constructor
           </button>
+        </div>
+      ) : config.modalidad_recoleccion === 'cawi_exclusiva' ? (
+        <div className="bg-[#0F2342] border border-[#1E3A5F] rounded-lg p-8 text-center space-y-4">
+          <h2 className="text-lg font-semibold text-white">
+            Modalidad CAWI Exclusiva Activa
+          </h2>
+          <p className="text-sm text-slate-300 max-w-lg mx-auto leading-relaxed">
+            Este estudio está configurado únicamente para que cada persona responda de forma
+            autoadministrada desde su computador o celular mediante el enlace web o correo
+            electrónico de arriba (sin encuestador).
+          </p>
+          <div className="flex flex-wrap justify-center gap-3 pt-1">
+            {onPreviewCawi && (
+              <button
+                type="button"
+                onClick={onPreviewCawi}
+                className="px-5 py-2.5 text-xs font-semibold text-[#081529] bg-orange-500 rounded-lg hover:bg-orange-400 transition-colors cursor-pointer"
+              >
+                Abrir vista previa CAWI
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onIrAConstructor}
+              className="px-4 py-2.5 text-xs font-medium text-white bg-[#081529] border border-[#1E3A5F] rounded-lg hover:border-orange-500 transition-colors cursor-pointer"
+            >
+              Cambiar modalidad en Constructor
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

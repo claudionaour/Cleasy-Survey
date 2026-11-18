@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { User } from 'firebase/auth';
 import { LogOut, Plus } from 'lucide-react';
 import { BuilderAndQuotasPanel } from './components/BuilderAndQuotasPanel';
+import { CawiRespondentView } from './components/CawiRespondentView';
 import { FieldSurveyRunner } from './components/FieldSurveyRunner';
 import { Phase4DashboardPanel } from './components/Phase4DashboardPanel';
 import {
@@ -58,7 +59,15 @@ function readStorage<T>(key: string, fallback: T): T {
   }
 }
 
+function getCawiStudyIdFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  const val = new URLSearchParams(window.location.search).get('cawi');
+  return val && val.trim() ? val.trim() : null;
+}
+
 export default function App() {
+  const [cawiStudyId] = useState<string | null>(() => getCawiStudyIdFromUrl());
+  const [previewCawi, setPreviewCawi] = useState<boolean>(false);
   const [vista, setVista] = useState<VistaActiva>('encuestar');
   const [pasoEncuesta, setPasoEncuesta] = useState<'optin' | 'preguntas' | 'exito'>('optin');
   const [enLinea, setEnLinea] = useState<boolean>(true);
@@ -119,8 +128,9 @@ export default function App() {
     }
   }, [config, colaOffline, cuotas, respuestas, auditoria, preguntas]);
 
-  // Escuchar sesión de Firebase Authentication
+  // Escuchar sesión de Firebase Authentication (solo modo investigador)
   useEffect(() => {
+    if (cawiStudyId) return;
     const unsub = subscribeFirebaseAuth((user, ready) => {
       setFirebaseUser(user);
       setAuthReady(ready);
@@ -129,11 +139,11 @@ export default function App() {
       }
     });
     return () => unsub();
-  }, []);
+  }, [cawiStudyId]);
 
   // Conectar e inicializar el estudio en Cloud Firestore cuando el usuario está autenticado
   useEffect(() => {
-    if (!authReady || !firebaseUser) return;
+    if (cawiStudyId || !authReady || !firebaseUser) return;
 
     let cancelled = false;
     let unsubFirestore: (() => void) | null = null;
@@ -177,7 +187,7 @@ export default function App() {
       cancelled = true;
       if (unsubFirestore) unsubFirestore();
     };
-  }, [authReady, firebaseUser]);
+  }, [cawiStudyId, authReady, firebaseUser]);
 
   const handleConectarFirebase = async () => {
     setConnectingFirebase(true);
@@ -321,6 +331,7 @@ export default function App() {
   };
 
   const handleUpdateConfig = (next: ConfiguracionEncuesta) => {
+    const modalityChanged = next.modalidad_recoleccion !== config.modalidad_recoleccion;
     setConfig(next);
     if (!firebaseUser || !activeStudyId) return;
 
@@ -328,10 +339,25 @@ export default function App() {
     if (configDebounceRef.current !== null) {
       window.clearTimeout(configDebounceRef.current);
     }
+
+    const uid = firebaseUser.uid;
+    const studyId = activeStudyId;
+
+    if (modalityChanged) {
+      void updateStudyConfigInFirestore(uid, studyId, next, true)
+        .catch((err: unknown) => {
+          setFirebaseError(
+            err instanceof Error ? err.message : 'Error actualizando modalidad en Firestore.'
+          );
+        })
+        .finally(() => {
+          configDirtyRef.current = false;
+        });
+      return;
+    }
+
     configDebounceRef.current = window.setTimeout(() => {
-      const uid = firebaseUser.uid;
-      const studyId = activeStudyId;
-      void updateStudyConfigInFirestore(uid, studyId, next)
+      void updateStudyConfigInFirestore(uid, studyId, next, false)
         .catch((err: unknown) => {
           setFirebaseError(
             err instanceof Error ? err.message : 'Error guardando configuración en Firestore.'
@@ -434,13 +460,16 @@ export default function App() {
   const handleAddPregunta = (nueva: PreguntaInstrumento) => {
     setPreguntas((prev) => [...prev, nueva]);
     if (firebaseUser && activeStudyId) {
-      void addQuestionInFirestore(firebaseUser.uid, activeStudyId, nueva).catch(
-        (err: unknown) => {
-          setFirebaseError(
-            err instanceof Error ? err.message : 'Error guardando pregunta en Firestore.'
-          );
-        }
-      );
+      void addQuestionInFirestore(
+        firebaseUser.uid,
+        activeStudyId,
+        nueva,
+        config.modalidad_recoleccion || 'mixta'
+      ).catch((err: unknown) => {
+        setFirebaseError(
+          err instanceof Error ? err.message : 'Error guardando pregunta en Firestore.'
+        );
+      });
     }
   };
 
@@ -458,7 +487,12 @@ export default function App() {
   const handleAddCuota = (nueva: CuotaDemografica) => {
     setCuotas((prev) => [...prev, nueva]);
     if (firebaseUser && activeStudyId) {
-      void addQuotaInFirestore(firebaseUser.uid, activeStudyId, nueva).catch((err: unknown) => {
+      void addQuotaInFirestore(
+        firebaseUser.uid,
+        activeStudyId,
+        nueva,
+        config.modalidad_recoleccion || 'mixta'
+      ).catch((err: unknown) => {
         setFirebaseError(
           err instanceof Error ? err.message : 'Error guardando cuota en Firestore.'
         );
@@ -481,6 +515,20 @@ export default function App() {
     setVista('encuestar');
     setPasoEncuesta('optin');
   };
+
+  if (cawiStudyId) {
+    return <CawiRespondentView studyId={cawiStudyId} />;
+  }
+
+  if (previewCawi) {
+    return (
+      <CawiRespondentView
+        previewData={{ config, preguntas, cuotas }}
+        onExitPreview={() => setPreviewCawi(false)}
+        onPreviewSubmit={handleGuardarRespuesta}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#081529] text-white flex flex-col print:bg-white print:text-slate-900">
@@ -625,6 +673,9 @@ export default function App() {
             onGuardarRespuesta={handleGuardarRespuesta}
             onEjecutarGuardarLote={handleEjecutarGuardarLote}
             onReiniciarDatos={handleReiniciarDatos}
+            activeStudyId={activeStudyId}
+            onConectarFirebase={handleConectarFirebase}
+            onPreviewCawi={() => setPreviewCawi(true)}
           />
         )}
 
@@ -638,6 +689,9 @@ export default function App() {
             cuotas={cuotas}
             onAddCuota={handleAddCuota}
             onRemoveCuota={handleRemoveCuota}
+            activeStudyId={activeStudyId}
+            onConectarFirebase={handleConectarFirebase}
+            onPreviewCawi={() => setPreviewCawi(true)}
           />
         )}
 

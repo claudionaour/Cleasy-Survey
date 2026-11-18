@@ -37,17 +37,26 @@ service cloud.firestore {
         get(/databases/$(database)/documents/studies/$(studyId)).data.ownerId == request.auth.uid;
     }
 
+    function isCawiStudy(studyId) {
+      return exists(/databases/$(database)/documents/studies/$(studyId)) &&
+        get(/databases/$(database)/documents/studies/$(studyId)).data.modalidad_recoleccion in ['mixta', 'cawi_exclusiva'];
+    }
+
+    function studyOwnerOf(studyId) {
+      return get(/databases/$(database)/documents/studies/$(studyId)).data.ownerId;
+    }
+
     // Validation Blueprints
     function isValidStudy(data) {
       return data.keys().hasAll([
           'ownerId', 'estudio_id', 'titulo', 'universo_N', 'nivel_confianza_pct',
           'margen_error_pct', 'tamano_muestra_n', 'politica_cuota_estricta',
-          'version_instrumento', 'createdAt', 'updatedAt'
+          'version_instrumento', 'modalidad_recoleccion', 'createdAt', 'updatedAt'
         ]) &&
         data.keys().hasOnly([
           'ownerId', 'estudio_id', 'titulo', 'universo_N', 'nivel_confianza_pct',
           'margen_error_pct', 'tamano_muestra_n', 'politica_cuota_estricta',
-          'version_instrumento', 'createdAt', 'updatedAt'
+          'version_instrumento', 'modalidad_recoleccion', 'createdAt', 'updatedAt'
         ]) &&
         data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid &&
         data.estudio_id is string && isValidId(data.estudio_id) &&
@@ -58,6 +67,7 @@ service cloud.firestore {
         (data.tamano_muestra_n is int || data.tamano_muestra_n is float) && data.tamano_muestra_n >= 1 && data.tamano_muestra_n <= 100000000 &&
         data.politica_cuota_estricta is bool &&
         data.version_instrumento is string && data.version_instrumento.size() >= 1 && data.version_instrumento.size() <= 40 &&
+        data.modalidad_recoleccion is string && data.modalidad_recoleccion in ['solo_encuestador', 'mixta', 'cawi_exclusiva'] &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
@@ -65,11 +75,11 @@ service cloud.firestore {
     function isValidQuestion(data, studyId) {
       return data.keys().hasAll([
           'id', 'studyId', 'ownerId', 'orden', 'texto', 'tipo',
-          'alternativas', 'obligatoria', 'salto_logico', 'createdAt', 'updatedAt'
+          'alternativas', 'obligatoria', 'salto_logico', 'cawiEnabled', 'createdAt', 'updatedAt'
         ]) &&
         data.keys().hasOnly([
           'id', 'studyId', 'ownerId', 'orden', 'texto', 'tipo',
-          'alternativas', 'obligatoria', 'salto_logico', 'createdAt', 'updatedAt'
+          'alternativas', 'obligatoria', 'salto_logico', 'cawiEnabled', 'createdAt', 'updatedAt'
         ]) &&
         data.id is string && isValidShortId(data.id) &&
         data.studyId is string && isValidId(data.studyId) && data.studyId == studyId &&
@@ -81,32 +91,34 @@ service cloud.firestore {
         (data.alternativas.size() == 0 || data.alternativas[0] is string) &&
         data.obligatoria is bool &&
         data.salto_logico is string && data.salto_logico.size() <= 200 &&
+        data.cawiEnabled is bool &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
 
-    function isValidQuota(data, studyId) {
+    function isValidQuotaShape(data, studyId) {
       return data.keys().hasAll([
           'id', 'studyId', 'ownerId', 'macro_zona', 'rango_etario',
-          'genero', 'meta', 'actual', 'createdAt', 'updatedAt'
+          'genero', 'meta', 'actual', 'cawiEnabled', 'createdAt', 'updatedAt'
         ]) &&
         data.keys().hasOnly([
           'id', 'studyId', 'ownerId', 'macro_zona', 'rango_etario',
-          'genero', 'meta', 'actual', 'createdAt', 'updatedAt'
+          'genero', 'meta', 'actual', 'cawiEnabled', 'createdAt', 'updatedAt'
         ]) &&
         data.id is string && isValidShortId(data.id) &&
         data.studyId is string && isValidId(data.studyId) && data.studyId == studyId &&
-        data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid &&
+        data.ownerId is string && isValidId(data.ownerId) &&
         data.macro_zona is string && data.macro_zona.size() >= 1 && data.macro_zona.size() <= 120 &&
         data.rango_etario is string && data.rango_etario.size() >= 1 && data.rango_etario.size() <= 60 &&
         data.genero is string && data.genero.size() >= 1 && data.genero.size() <= 60 &&
         (data.meta is int || data.meta is float) && data.meta >= 1 && data.meta <= 1000000 &&
         (data.actual is int || data.actual is float) && data.actual >= 0 && data.actual <= 1000000 &&
+        data.cawiEnabled is bool &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
 
-    function isValidResponse(data, studyId) {
+    function isValidResponseShape(data, studyId) {
       return data.keys().hasAll([
           'uuid_respuesta', 'studyId', 'ownerId', 'timestamp_captura', 'timestamp_sync',
           'macro_zona', 'rango_etario', 'genero', 'estado_cuota', 'respuestas', 'createdAt'
@@ -117,7 +129,7 @@ service cloud.firestore {
         ]) &&
         data.uuid_respuesta is string && isValidId(data.uuid_respuesta) &&
         data.studyId is string && isValidId(data.studyId) && data.studyId == studyId &&
-        data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid &&
+        data.ownerId is string && isValidId(data.ownerId) &&
         data.timestamp_captura is string && data.timestamp_captura.size() >= 1 && data.timestamp_captura.size() <= 64 &&
         data.timestamp_sync is string && data.timestamp_sync.size() >= 1 && data.timestamp_sync.size() <= 64 &&
         data.macro_zona is string && data.macro_zona.size() >= 1 && data.macro_zona.size() <= 120 &&
@@ -128,7 +140,7 @@ service cloud.firestore {
         data.createdAt is timestamp;
     }
 
-    function isValidAudit(data, studyId) {
+    function isValidAuditShape(data, studyId) {
       return data.keys().hasAll([
           'id_evento_auditoria', 'studyId', 'ownerId', 'fecha_registro',
           'operador_codigo', 'macro_zona_aprox', 'consentimiento_opt_in',
@@ -141,7 +153,7 @@ service cloud.firestore {
         ]) &&
         data.id_evento_auditoria is string && isValidId(data.id_evento_auditoria) &&
         data.studyId is string && isValidId(data.studyId) && data.studyId == studyId &&
-        data.ownerId is string && isValidId(data.ownerId) && data.ownerId == request.auth.uid &&
+        data.ownerId is string && isValidId(data.ownerId) &&
         data.fecha_registro is string && data.fecha_registro.size() >= 1 && data.fecha_registro.size() <= 64 &&
         data.operador_codigo is string && data.operador_codigo.size() >= 1 && data.operador_codigo.size() <= 120 &&
         data.macro_zona_aprox is string && data.macro_zona_aprox.size() >= 1 && data.macro_zona_aprox.size() <= 120 &&
@@ -151,7 +163,10 @@ service cloud.firestore {
     }
 
     match /studies/{studyId} {
-      allow get: if isVerifiedUser() && isValidId(studyId) && existing().ownerId == request.auth.uid;
+      allow get: if isValidId(studyId) && (
+        (isVerifiedUser() && existing().ownerId == request.auth.uid) ||
+        existing().modalidad_recoleccion in ['mixta', 'cawi_exclusiva']
+      );
       allow list: if isVerifiedUser() && existing().ownerId == request.auth.uid;
       allow create: if isVerifiedUser() && isValidId(studyId) &&
         isValidStudy(incoming()) &&
@@ -167,15 +182,19 @@ service cloud.firestore {
         incoming().diff(existing()).affectedKeys().hasOnly([
           'titulo', 'universo_N', 'nivel_confianza_pct',
           'margen_error_pct', 'tamano_muestra_n', 'politica_cuota_estricta',
-          'version_instrumento', 'updatedAt'
+          'version_instrumento', 'modalidad_recoleccion', 'updatedAt'
         ]);
       allow delete: if isVerifiedUser() && isValidId(studyId) && existing().ownerId == request.auth.uid;
 
       match /questions/{questionId} {
-        allow get: if isVerifiedUser() && isValidId(studyId) && isValidShortId(questionId) &&
-          existing().ownerId == request.auth.uid && isStudyOwner(studyId);
-        allow list: if isVerifiedUser() && isValidId(studyId) &&
-          existing().ownerId == request.auth.uid && existing().studyId == studyId;
+        allow get: if isValidId(studyId) && isValidShortId(questionId) && (
+          (isVerifiedUser() && existing().ownerId == request.auth.uid && isStudyOwner(studyId)) ||
+          (existing().cawiEnabled == true && isCawiStudy(studyId))
+        );
+        allow list: if isValidId(studyId) && existing().studyId == studyId && (
+          (isVerifiedUser() && existing().ownerId == request.auth.uid) ||
+          existing().cawiEnabled == true
+        );
         allow create: if isVerifiedUser() && isValidId(studyId) && isValidShortId(questionId) &&
           isValidQuestion(incoming(), studyId) &&
           incoming().createdAt == request.time &&
@@ -191,34 +210,44 @@ service cloud.firestore {
           incoming().updatedAt == request.time &&
           isStudyOwner(studyId) &&
           incoming().diff(existing()).affectedKeys().hasOnly([
-            'orden', 'texto', 'tipo', 'alternativas', 'obligatoria', 'salto_logico', 'updatedAt'
+            'orden', 'texto', 'tipo', 'alternativas', 'obligatoria', 'salto_logico', 'cawiEnabled', 'updatedAt'
           ]);
         allow delete: if isVerifiedUser() && isValidId(studyId) && isValidShortId(questionId) &&
           existing().ownerId == request.auth.uid && isStudyOwner(studyId);
       }
 
       match /quotas/{quotaId} {
-        allow get: if isVerifiedUser() && isValidId(studyId) && isValidShortId(quotaId) &&
-          existing().ownerId == request.auth.uid && isStudyOwner(studyId);
-        allow list: if isVerifiedUser() && isValidId(studyId) &&
-          existing().ownerId == request.auth.uid && existing().studyId == studyId;
+        allow get: if isValidId(studyId) && isValidShortId(quotaId) && (
+          (isVerifiedUser() && existing().ownerId == request.auth.uid && isStudyOwner(studyId)) ||
+          (existing().cawiEnabled == true && isCawiStudy(studyId))
+        );
+        allow list: if isValidId(studyId) && existing().studyId == studyId && (
+          (isVerifiedUser() && existing().ownerId == request.auth.uid) ||
+          existing().cawiEnabled == true
+        );
         allow create: if isVerifiedUser() && isValidId(studyId) && isValidShortId(quotaId) &&
-          isValidQuota(incoming(), studyId) &&
+          isValidQuotaShape(incoming(), studyId) &&
+          incoming().ownerId == request.auth.uid &&
           incoming().createdAt == request.time &&
           incoming().updatedAt == request.time &&
           isStudyOwner(studyId);
-        allow update: if isVerifiedUser() && isValidId(studyId) && isValidShortId(quotaId) &&
-          isValidQuota(incoming(), studyId) &&
-          existing().ownerId == request.auth.uid &&
+        allow update: if isValidId(studyId) && isValidShortId(quotaId) &&
+          isValidQuotaShape(incoming(), studyId) &&
           incoming().ownerId == existing().ownerId &&
           incoming().studyId == existing().studyId &&
           incoming().id == existing().id &&
           incoming().createdAt == existing().createdAt &&
-          incoming().updatedAt == request.time &&
-          isStudyOwner(studyId) &&
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'macro_zona', 'rango_etario', 'genero', 'meta', 'actual', 'updatedAt'
-          ]);
+          incoming().updatedAt == request.time && (
+            (isVerifiedUser() && existing().ownerId == request.auth.uid && isStudyOwner(studyId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'macro_zona', 'rango_etario', 'genero', 'meta', 'actual', 'cawiEnabled', 'updatedAt'
+              ])) ||
+            (existing().cawiEnabled == true &&
+              incoming().cawiEnabled == existing().cawiEnabled &&
+              incoming().actual == existing().actual + 1 &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['actual', 'updatedAt']) &&
+              isCawiStudy(studyId))
+          );
         allow delete: if isVerifiedUser() && isValidId(studyId) && isValidShortId(quotaId) &&
           existing().ownerId == request.auth.uid && isStudyOwner(studyId);
       }
@@ -228,11 +257,13 @@ service cloud.firestore {
           existing().ownerId == request.auth.uid && isStudyOwner(studyId);
         allow list: if isVerifiedUser() && isValidId(studyId) &&
           existing().ownerId == request.auth.uid && existing().studyId == studyId;
-        allow create: if isVerifiedUser() && isValidId(studyId) && isValidId(responseId) &&
-          isValidResponse(incoming(), studyId) &&
+        allow create: if isValidId(studyId) && isValidId(responseId) &&
+          isValidResponseShape(incoming(), studyId) &&
           incoming().uuid_respuesta == responseId &&
-          incoming().createdAt == request.time &&
-          isStudyOwner(studyId);
+          incoming().createdAt == request.time && (
+            (isVerifiedUser() && incoming().ownerId == request.auth.uid && isStudyOwner(studyId)) ||
+            (isCawiStudy(studyId) && incoming().ownerId == studyOwnerOf(studyId))
+          );
         allow update: if false;
         allow delete: if isVerifiedUser() && isValidId(studyId) && isValidId(responseId) &&
           existing().ownerId == request.auth.uid && isStudyOwner(studyId);
@@ -243,11 +274,14 @@ service cloud.firestore {
           existing().ownerId == request.auth.uid && isStudyOwner(studyId);
         allow list: if isVerifiedUser() && isValidId(studyId) &&
           existing().ownerId == request.auth.uid && existing().studyId == studyId;
-        allow create: if isVerifiedUser() && isValidId(studyId) && isValidId(auditId) &&
-          isValidAudit(incoming(), studyId) &&
+        allow create: if isValidId(studyId) && isValidId(auditId) &&
+          isValidAuditShape(incoming(), studyId) &&
           incoming().id_evento_auditoria == auditId &&
-          incoming().createdAt == request.time &&
-          isStudyOwner(studyId);
+          incoming().createdAt == request.time && (
+            (isVerifiedUser() && incoming().ownerId == request.auth.uid && isStudyOwner(studyId)) ||
+            (incoming().operador_codigo == 'CAWI-Autoadministrado' &&
+              isCawiStudy(studyId) && incoming().ownerId == studyOwnerOf(studyId))
+          );
         allow update: if false;
         allow delete: if isVerifiedUser() && isValidId(studyId) && isValidId(auditId) &&
           existing().ownerId == request.auth.uid && isStudyOwner(studyId);

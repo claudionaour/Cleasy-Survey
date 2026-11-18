@@ -43,6 +43,10 @@
           "minLength": 1,
           "maxLength": 40
         },
+        "modalidad_recoleccion": {
+          "type": "string",
+          "enum": ["solo_encuestador", "mixta", "cawi_exclusiva"]
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time"
@@ -62,6 +66,7 @@
         "tamano_muestra_n",
         "politica_cuota_estricta",
         "version_instrumento",
+        "modalidad_recoleccion",
         "createdAt",
         "updatedAt"
       ]
@@ -111,6 +116,9 @@
           "type": "string",
           "maxLength": 200
         },
+        "cawiEnabled": {
+          "type": "boolean"
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time"
@@ -130,6 +138,7 @@
         "alternativas",
         "obligatoria",
         "salto_logico",
+        "cawiEnabled",
         "createdAt",
         "updatedAt"
       ]
@@ -178,6 +187,9 @@
         "actual": {
           "type": "number"
         },
+        "cawiEnabled": {
+          "type": "boolean"
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time"
@@ -196,6 +208,7 @@
         "genero",
         "meta",
         "actual",
+        "cawiEnabled",
         "createdAt",
         "updatedAt"
       ]

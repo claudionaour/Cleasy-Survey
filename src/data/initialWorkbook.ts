@@ -48,7 +48,8 @@ export const INITIAL_CONFIG: ConfiguracionEncuesta = {
   margen_error_pct: 5,
   tamano_muestra_n: calcularTamanoMuestralFinito(1000, 95, 5),
   politica_cuota_estricta: false,
-  version_instrumento: 'v1.0'
+  version_instrumento: 'v1.0',
+  modalidad_recoleccion: 'mixta'
 };
 
 export const INITIAL_PREGUNTAS: PreguntaInstrumento[] = [];
