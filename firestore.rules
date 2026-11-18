@@ -163,7 +163,7 @@ service cloud.firestore {
     }
 
     match /studies/{studyId} {
-      allow get: if isValidId(studyId) && (
+      allow get: if isValidId(studyId) && resource != null && (
         (isVerifiedUser() && existing().ownerId == request.auth.uid) ||
         existing().modalidad_recoleccion in ['mixta', 'cawi_exclusiva']
       );
@@ -187,11 +187,11 @@ service cloud.firestore {
       allow delete: if isVerifiedUser() && isValidId(studyId) && existing().ownerId == request.auth.uid;
 
       match /questions/{questionId} {
-        allow get: if isValidId(studyId) && isValidShortId(questionId) && (
+        allow get: if isValidId(studyId) && isValidShortId(questionId) && resource != null && (
           (isVerifiedUser() && existing().ownerId == request.auth.uid && isStudyOwner(studyId)) ||
           (existing().cawiEnabled == true && isCawiStudy(studyId))
         );
-        allow list: if isValidId(studyId) && existing().studyId == studyId && (
+        allow list: if isValidId(studyId) && (
           (isVerifiedUser() && existing().ownerId == request.auth.uid) ||
           existing().cawiEnabled == true
         );
@@ -217,11 +217,11 @@ service cloud.firestore {
       }
 
       match /quotas/{quotaId} {
-        allow get: if isValidId(studyId) && isValidShortId(quotaId) && (
+        allow get: if isValidId(studyId) && isValidShortId(quotaId) && resource != null && (
           (isVerifiedUser() && existing().ownerId == request.auth.uid && isStudyOwner(studyId)) ||
           (existing().cawiEnabled == true && isCawiStudy(studyId))
         );
-        allow list: if isValidId(studyId) && existing().studyId == studyId && (
+        allow list: if isValidId(studyId) && (
           (isVerifiedUser() && existing().ownerId == request.auth.uid) ||
           existing().cawiEnabled == true
         );
@@ -254,9 +254,9 @@ service cloud.firestore {
 
       match /responses/{responseId} {
         allow get: if isVerifiedUser() && isValidId(studyId) && isValidId(responseId) &&
-          existing().ownerId == request.auth.uid && isStudyOwner(studyId);
+          resource != null && existing().ownerId == request.auth.uid && isStudyOwner(studyId);
         allow list: if isVerifiedUser() && isValidId(studyId) &&
-          existing().ownerId == request.auth.uid && existing().studyId == studyId;
+          existing().ownerId == request.auth.uid;
         allow create: if isValidId(studyId) && isValidId(responseId) &&
           isValidResponseShape(incoming(), studyId) &&
           incoming().uuid_respuesta == responseId &&
@@ -271,9 +271,9 @@ service cloud.firestore {
 
       match /audits/{auditId} {
         allow get: if isVerifiedUser() && isValidId(studyId) && isValidId(auditId) &&
-          existing().ownerId == request.auth.uid && isStudyOwner(studyId);
+          resource != null && existing().ownerId == request.auth.uid && isStudyOwner(studyId);
         allow list: if isVerifiedUser() && isValidId(studyId) &&
-          existing().ownerId == request.auth.uid && existing().studyId == studyId;
+          existing().ownerId == request.auth.uid;
         allow create: if isValidId(studyId) && isValidId(auditId) &&
           isValidAuditShape(incoming(), studyId) &&
           incoming().id_evento_auditoria == auditId &&
